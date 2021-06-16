@@ -7,6 +7,8 @@ import android.util.Log;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
+import java.util.List;
 
 public class AcousticAnalysis extends Thread{
 
@@ -30,6 +32,8 @@ public class AcousticAnalysis extends Thread{
     double[] dataCopy = new double[FFT_SIZE];
 
     double PITCH = 440.0;
+
+    double thr = 50;
 
 
     AcousticAnalysis(){
@@ -99,9 +103,14 @@ public class AcousticAnalysis extends Thread{
             }
 
             //ピーク周波数の計算
-            freq = resol * max_i;
+            if(max_db > -55) {
+                freq = resol * max_i;
+            }
+            else freq = 0;
 
             scale(freq);
+
+            Log.d("fft", "音量："+ max_db);
 
 
         }
@@ -121,6 +130,8 @@ public class AcousticAnalysis extends Thread{
 
         return output;
     }
+
+
 
     public void scale(double freq) {
         int node = (int) Math.round(log2(freq/PITCH)*12);
@@ -146,14 +157,95 @@ public class AcousticAnalysis extends Thread{
 
 
 
-        Log.d("fft","周波数："+ freq + "  音程："+ Arr[node2] + pp +"  度数："+ Math.toDegrees(Math.asin(cent)));
+        //Log.d("fft","周波数："+ freq + "  音程："+ Arr[node2] + pp +"  度数："+ Math.toDegrees(Math.asin(cent)));
 
 
         return;
     }
 
+
+
     public double log2(double x){
         return Math.log(x) / Math.log(2);
+    }
+
+
+    public int Max_find(int s, int range, double[] d){
+        int max_i = s;
+        double max = d[s];
+        for (int i = s; i < s+range && i < d.length; i++){
+            if(d[i] > max){
+                max = d[i];
+                max_i = i;
+            }
+        }
+        return max_i;
+    }
+
+
+
+    public int Min_find(int s, int e, double[] d){
+        int min_i = s;
+        double min = d[s];
+        for (int i = s; i < e; i++){
+            if(d[i] < min){
+                min = d[i];
+                min_i = i;
+            }
+        }
+        return min_i;
+    }
+
+
+
+    public List find_peak(double[] d){
+        int len = d.length;
+        int[] max_array = new int[len];
+        int range = 50;
+        int c = 0;
+        for (int i = 0; i < len - range; i++){
+            int index = Max_find(i,range,d);
+            if(index == i + range -1){
+                if (index == Max_find(i+1,range,d)){
+                    int check = 0;
+                    for (int k = 1; k < range; k++){
+                        if(index == Max_find(i+k,range,d)){
+                            check++;
+                        }
+                    }
+                    if(check == range - 1){
+                        max_array[c] = index;
+                        c++;
+                    }
+                }
+            }
+        }
+
+//                    int h = c-1;
+//                    Log.d("fft","peak" + h);
+
+
+        int[] min_array = new int[len];
+
+
+        int h = Min_find(0,max_array[0],d);
+
+        min_array[0] = h;
+
+        for(int i = 1; i < c; i++){
+            min_array[i] = Min_find(max_array[i-1],max_array[i],d);
+        }
+
+
+
+        List<Integer> peak = new ArrayList<>();
+        for(int i = 0; i < c; i++){
+            if(d[max_array[i]] - d[min_array[i]] >= thr){
+                peak.add(max_array[i]);
+            }
+        }
+
+        return peak;
     }
 
 
