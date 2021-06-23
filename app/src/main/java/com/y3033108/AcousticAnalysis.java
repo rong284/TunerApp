@@ -4,6 +4,7 @@ import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.util.Log;
+import android.widget.TextView;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -28,15 +29,23 @@ public class AcousticAnalysis extends Thread{
     int bufSize;
     //ピーク周波数
     static double freq = 0;
+    static String NN = "";
+    static double kakudo = 0;
+
+    TextView f;
+    TextView n;
+    TextView c;
+
+    int count = 0;
 
     double[] dataCopy = new double[FFT_SIZE];
 
     double PITCH = 440.0;
 
-    double thr = 50;
+    double thr = 70;
 
 
-    AcousticAnalysis(){
+    AcousticAnalysis(TextView t1, TextView t2, TextView t3){
         bufSize = AudioRecord.getMinBufferSize(SAMPLING_RATE,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
 
@@ -48,6 +57,10 @@ public class AcousticAnalysis extends Thread{
                 AudioFormat.ENCODING_PCM_16BIT, bufSize * 2);
 
         audio.startRecording();
+
+        f = t1;
+        n = t2;
+        c = t3;
     }
 
     public void run(){
@@ -93,24 +106,29 @@ public class AcousticAnalysis extends Thread{
             double max_db = -120d;
             int max_i = 0;
             for (int i = 0; i < FFT_SIZE; i += 2) {
-                dbfs[i / 2] = (int) (20 * Math.log10(Math.sqrt(Math.pow(rslt[i], 2)
-                        + Math.pow(rslt[i + 1], 2)) / baseline));
-                //ピーク検出
-                if (max_db < dbfs[i / 2]) {
-                    max_db = dbfs[i / 2];
-                    max_i = i / 2;
+                if ( 2066 <= Math.abs(2121-resol*i/2) ) {
+                    dbfs[i/2] = -120;
+                }
+
+                else {
+                    dbfs[i / 2] = (int) (20 * Math.log10(Math.sqrt(Math.pow(rslt[i], 2)
+                            + Math.pow(rslt[i + 1], 2)) / baseline));
                 }
             }
 
-            //ピーク周波数の計算
-            if(max_db > -55) {
-                freq = resol * max_i;
+            List<Integer> p = new ArrayList<>();
+            p.addAll(find_peak(dbfs));
+
+
+
+            if(p.isEmpty() == false) {
+                count = 0;
+                freq = p.get(0) * resol;
+                scale(freq);
             }
-            else freq = 0;
+            else count++;
 
-            scale(freq);
-
-            Log.d("fft", "音量："+ max_db);
+            show();
 
 
         }
@@ -132,6 +150,17 @@ public class AcousticAnalysis extends Thread{
     }
 
 
+    public void show(){
+        f.setText(Double.toString(freq));
+        n.setText(NN);
+        c.setText(Double.toString(kakudo));
+        if (count >= 10){
+            f.setText("");
+            n.setText("");
+            c.setText("");
+        }
+        return;
+    }
 
     public void scale(double freq) {
         int node = (int) Math.round(log2(freq/PITCH)*12);
@@ -147,18 +176,15 @@ public class AcousticAnalysis extends Thread{
 
         String[] Arr = {"A","B♭","B","C","C#","D","E♭","E","F","F#","G","A♭"};
 
-        int p = (node + 9) / 12;
-
-        int pp = 4 + p;
+        int pp = 1 + (int) log2(freq/32.703);
 
         int node2 = node % 12;
 
         if(node2<0) node2 = node2 + 12;
 
+        NN = Arr[node2] + pp;
 
-
-        //Log.d("fft","周波数："+ freq + "  音程："+ Arr[node2] + pp +"  度数："+ Math.toDegrees(Math.asin(cent)));
-
+        kakudo = Math.toDegrees(Math.asin(cent));
 
         return;
     }
@@ -168,6 +194,7 @@ public class AcousticAnalysis extends Thread{
     public double log2(double x){
         return Math.log(x) / Math.log(2);
     }
+
 
 
     public int Max_find(int s, int range, double[] d){
@@ -221,16 +248,10 @@ public class AcousticAnalysis extends Thread{
             }
         }
 
-//                    int h = c-1;
-//                    Log.d("fft","peak" + h);
 
 
         int[] min_array = new int[len];
-
-
-        int h = Min_find(0,max_array[0],d);
-
-        min_array[0] = h;
+        min_array[0] = Min_find(0,max_array[0],d);
 
         for(int i = 1; i < c; i++){
             min_array[i] = Min_find(max_array[i-1],max_array[i],d);
