@@ -1,9 +1,13 @@
 package com.y3033108;
 
+import android.graphics.Point;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.util.Log;
+import android.view.animation.Animation;
+import android.view.animation.TranslateAnimation;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import java.nio.ByteBuffer;
@@ -35,6 +39,11 @@ public class AcousticAnalysis extends Thread{
     TextView f;
     TextView n;
     TextView c;
+    ImageView im;
+    int animesize = 0;
+    float startX = 0;
+    float startY = 0;
+    float currentX = 0;
 
     int count = 0;
 
@@ -42,10 +51,10 @@ public class AcousticAnalysis extends Thread{
 
     double PITCH = 440.0;
 
-    double thr = 70;
+    double thr = 55;
 
 
-    AcousticAnalysis(TextView t1, TextView t2, TextView t3){
+    AcousticAnalysis(TextView t1, TextView t2, TextView t3, ImageView image, Point view){
         bufSize = AudioRecord.getMinBufferSize(SAMPLING_RATE,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
 
@@ -61,6 +70,16 @@ public class AcousticAnalysis extends Thread{
         f = t1;
         n = t2;
         c = t3;
+        im = image;
+
+        f.setText("");
+        n.setText("");
+        c.setText("");
+
+        animesize = ((view.x * 9/10) * 2750/3611)/100;
+        startX = image.getLeft();
+        startY = image.getTop();
+        currentX = image.getLeft();
     }
 
     public void run(){
@@ -116,24 +135,29 @@ public class AcousticAnalysis extends Thread{
                 }
             }
 
-            List<Integer> p = new ArrayList<>();
-            p.addAll(find_peak(dbfs));
+            int in = find_peak(dbfs);
 
-
-
-            if(p.isEmpty() == false) {
-                count = 0;
-                freq = p.get(0) * resol;
-                scale(freq);
+            freq = in * resol;
+            String moji = NN;
+            scale(freq);
+            if (moji.equals("") && count < 5){
+                count = count +1;
             }
-            else count++;
-
-            show();
-
+            else if(count >= 5){
+                if(moji.equals(NN)) {
+                    count = count +1;
+                    show();
+                }
+                else {
+                    count = 0;
+                    show();
+                }
+            }
 
         }
         audio.stop();
         audio.release();
+        Log.d("log","とじたよ");
     }
 
     public double[] hamming(double[] input) {
@@ -151,14 +175,34 @@ public class AcousticAnalysis extends Thread{
 
 
     public void show(){
-        f.setText(Double.toString(freq));
-        n.setText(NN);
-        c.setText(Double.toString(kakudo));
-        if (count >= 10){
+        if (freq == 0 && count >= 5){
             f.setText("");
             n.setText("");
             c.setText("");
         }
+        else {
+            TranslateAnimation anime = new TranslateAnimation(
+                    Animation.ABSOLUTE, currentX,
+                    Animation.ABSOLUTE, (float) (startX + kakudo * animesize),
+                    Animation.ABSOLUTE, startY,
+                    Animation.ABSOLUTE, startY);
+
+            currentX = (float) (startX + kakudo * animesize);
+            Log.d("log", "layoutHeight=" + currentX);
+
+            anime.setDuration(100);
+            // 繰り返し回数
+            anime.setRepeatCount(0);
+            // animationが終わったそのまま表示にする
+            anime.setFillAfter(true);
+            //アニメーションの開始
+            im.startAnimation(anime);
+
+            f.setText(Double.toString(freq));
+            n.setText(NN);
+            c.setText(Double.toString(kakudo));
+        }
+
         return;
     }
 
@@ -166,13 +210,7 @@ public class AcousticAnalysis extends Thread{
         int node = (int) Math.round(log2(freq/PITCH)*12);
         double DD = (double) node/12.0;
         double node_freq = Math.pow(2.0,DD) * PITCH;
-        double Error = freq - node_freq;
-        int node_e = 0;
-        if (Error>0) node_e = node+1;
-        else node_e = node-1;
-        double DC = (double) node_e/12.0;
-        double freq_e = Math.pow(2.0,DC) * PITCH;
-        double cent = Error / Math.abs(node_freq - freq_e);
+        double cent = 1200 * log2(freq/node_freq);
 
         String[] Arr = {"A","B♭","B","C","C#","D","E♭","E","F","F#","G","A♭"};
 
@@ -182,9 +220,16 @@ public class AcousticAnalysis extends Thread{
 
         if(node2<0) node2 = node2 + 12;
 
-        NN = Arr[node2] + pp;
 
-        kakudo = Math.toDegrees(Math.asin(cent));
+        NN = Arr[node2];
+        if (freq == 0){
+            NN = "";
+            cent = 0;
+        }
+
+//        if(cent <-50) cent = 0;
+//        if(cent > 50) cent = 0;
+        kakudo = cent;
 
         return;
     }
@@ -225,12 +270,12 @@ public class AcousticAnalysis extends Thread{
 
 
 
-    public List find_peak(double[] d){
+    public int find_peak(double[] d){
         int len = d.length;
         int[] max_array = new int[len];
         int range = 50;
         int c = 0;
-        for (int i = 0; i < len - range; i++){
+        for (int i = 56; i < len - range; i++){
             int index = Max_find(i,range,d);
             if(index == i + range -1){
                 if (index == Max_find(i+1,range,d)){
@@ -251,7 +296,7 @@ public class AcousticAnalysis extends Thread{
 
 
         int[] min_array = new int[len];
-        min_array[0] = Min_find(0,max_array[0],d);
+        min_array[0] = Min_find(56,max_array[0],d);
 
         for(int i = 1; i < c; i++){
             min_array[i] = Min_find(max_array[i-1],max_array[i],d);
@@ -266,7 +311,41 @@ public class AcousticAnalysis extends Thread{
             }
         }
 
-        return peak;
+        int out = 0;
+        if(peak.isEmpty() == false) {
+            int index = peak.get(0);
+            if(peak.size() == 1 && d[index] > -60){
+                out = index;
+            }
+            else if(peak.size() >= 2) {
+                int check = peak.get(1) - index;
+                while(check > index + 3){
+                    check = check - index;
+                }
+                for(int i = 1; i < 7; i++){
+                    int k = Math.abs(check*i-index);
+                    if(k <= 3){
+                        out = check;
+                        break;
+                    }
+                }
+                if (out == 0){
+                    for (int i = 0; i < peak.size(); i++){
+                        double max = 0;
+                        if(d[i] > -60 && max < d[i]){
+                            max = d[i];
+                            out = i;
+                        }
+                    }
+                }
+            }
+        }
+
+        return out;
+    }
+
+    public void stoprun(){
+        isRecording = false;
     }
 
 
